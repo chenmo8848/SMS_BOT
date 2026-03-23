@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """SMS Bot v6 — 授权验证服务（对接 Auth Server API）"""
 
-import os, hashlib, json, logging, time, platform, threading
+import os, hashlib, json, logging, time, platform, threading, base64
 from typing import Optional
 from datetime import datetime
 
@@ -12,6 +12,14 @@ _LICENSE_CACHE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "license.dat"
 )
+
+# 内置服务端地址（混淆存储）
+_E = b'YUhSMGNITTZMeTlzYVdObGJuTmxMamt4T0RnNE15NWpiMjA9'
+def _r():
+    try:
+        return base64.b64decode(base64.b64decode(_E)).decode()
+    except Exception:
+        return ""
 
 
 class LicenseError(Exception):
@@ -257,8 +265,8 @@ def is_expired(expires_str: str) -> bool:
 class LicenseManager:
     """授权管理器 — 启动验证 + 心跳 + 卡密激活 + 运行时检查"""
 
-    def __init__(self, api_url: str):
-        self._api_url = api_url
+    def __init__(self, api_url: str = ""):
+        self._api_url = api_url or _r()
         self._machine_id = None
         self._valid = False
         self._expires = ""

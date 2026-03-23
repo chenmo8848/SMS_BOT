@@ -89,7 +89,7 @@ def main():
     task_mgr = TaskManager(state)
     monitor_svc = MonitorService(cfg, state, db, pl, notifier, task_mgr)
     landtest_svc = LandTestService(cfg, state, sender, db, notifier)
-    license_mgr = LicenseManager(cfg.license_api_url)
+    license_mgr = LicenseManager()
     sender._license_mgr = license_mgr  # 注入授权检查
 
     # ── 构建 Application ──
@@ -138,7 +138,7 @@ def main():
 
         # ── 授权验证（联网）──
         lic_status_line = ""
-        if cfg.license_api_url:
+        if license_mgr._api_url:
             log.info("正在验证授权...")
             lic_ok, lic_msg = license_mgr.full_verify()
             if not lic_ok:
@@ -177,7 +177,7 @@ def main():
         )
 
         # ── 启动到期提醒定时任务 ──
-        if cfg.license_api_url:
+        if license_mgr._api_url:
             asyncio.create_task(_expiry_reminder_loop(bot, cfg, license_mgr, notifier, state))
 
         # 自动启动监控
@@ -230,7 +230,7 @@ def main():
                 if state.license_blocked:
                     await _aio.sleep(3600)
                     continue
-                result = verify_online(license_mgr.machine_id, cfg.license_api_url)
+                result = verify_online(license_mgr.machine_id, license_mgr._api_url)
                 # 更新管理员联系方式
                 if result.get("admin_contact"):
                     license_mgr._admin_contact = result["admin_contact"]

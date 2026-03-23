@@ -3,9 +3,12 @@
 
 import os, hashlib, json, logging, time, platform, threading, base64
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 log = logging.getLogger(__name__)
+
+# 统一时区：Asia/Shanghai (UTC+8)
+CST = timezone(timedelta(hours=8))
 
 # 授权缓存文件
 _LICENSE_CACHE = os.path.join(
@@ -25,6 +28,11 @@ def _r():
 class LicenseError(Exception):
     """授权相关异常"""
     pass
+
+
+def _now() -> datetime:
+    """统一使用上海时间，与服务端一致"""
+    return datetime.now(CST)
 
 
 def get_machine_id() -> str:
@@ -92,6 +100,11 @@ def _get_device_info() -> str:
         return "Unknown"
 
 
+def _extract_admin(data: dict) -> str:
+    """从服务端响应中提取管理员联系方式"""
+    return data.get("admin_telegram", "") or data.get("admin_contact", "")
+
+
 def verify_online(device_id: str, api_url: str) -> dict:
     """
     联网验证授权（POST /api/client/verify）
@@ -111,17 +124,15 @@ def verify_online(device_id: str, api_url: str) -> dict:
         )
         if r.status_code == 200:
             data = r.json()
-            # 转换服务端响应格式，兼容客户端现有逻辑
             status = data.get("status")
-            remaining = data.get("remaining_seconds", 0)
+            remaining = max(0, data.get("remaining_seconds", 0))
             is_trial = data.get("is_trial", False)
             expires_at = data.get("expires_at", "")
+            admin = _extract_admin(data)
 
             if status == "ok":
-                # 计算天数
                 days_left = remaining // 86400
                 hours_left = remaining // 3600
-                # 转换 expires 为日期格式
                 expires_date = ""
                 if expires_at:
                     try:
@@ -139,19 +150,22 @@ def verify_online(device_id: str, api_url: str) -> dict:
                     "remaining_seconds": remaining,
                     "heartbeat_interval": data.get("heartbeat_interval", 300),
                     "msg": data.get("message", "授权有效"),
-                    "admin_contact": "",
+                    "announcement": data.get("announcement", ""),
+                    "admin_contact": admin,
                 }
             elif status == "banned":
-                return {"valid": False, "msg": "设备已被封禁", "admin_contact": ""}
+                return {"valid": False, "msg": "设备已被封禁", "admin_contact": admin}
+            elif status == "disabled":
+                return {"valid": False, "msg": "授权已被禁用", "admin_contact": admin}
             elif status == "expired":
                 return {
                     "valid": False,
                     "msg": "授权已过期",
                     "trial": is_trial,
-                    "admin_contact": "",
+                    "admin_contact": admin,
                 }
             else:
-                return {"valid": False, "msg": data.get("message", "验证失败"), "admin_contact": ""}
+                return {"valid": False, "msg": data.get("message", "验证失败"), "admin_contact": admin}
         else:
             return {"valid": False, "msg": f"服务器返回 {r.status_code}"}
     except httpx.TimeoutException:
@@ -189,7 +203,7 @@ def activate_key(device_id: str, api_url: str, license_key: str) -> dict:
         if r.status_code == 200:
             data = r.json()
             if data.get("status") == "ok":
-                remaining = data.get("remaining_seconds", 0)
+                remaining = max(0, data.get("remaining_seconds", 0))
                 expires_at = data.get("expires_at", "")
                 expires_date = ""
                 if expires_at:
@@ -198,12 +212,14 @@ def activate_key(device_id: str, api_url: str, license_key: str) -> dict:
                         expires_date = dt.strftime("%Y-%m-%d")
                     except Exception:
                         expires_date = expires_at[:10]
+                admin = _extract_admin(data)
                 return {
                     "valid": True,
                     "expires": expires_date,
                     "days_left": remaining // 86400,
                     "remaining_seconds": remaining,
                     "msg": data.get("message", "激活成功"),
+                    "admin_contact": admin,
                 }
             else:
                 return {"valid": False, "msg": data.get("message", "激活失败")}
@@ -215,12 +231,13 @@ def activate_key(device_id: str, api_url: str, license_key: str) -> dict:
 def save_cache(machine_id: str, result: dict):
     """缓存验证结果"""
     try:
+        cached_at = _now().isoformat()
         cache = {
             "machine_id": machine_id,
             "valid": result.get("valid", False),
             "expires": result.get("expires", ""),
-            "cached_at": datetime.now().isoformat(),
-            "check_hash": _make_check_hash(machine_id, result),
+            "cached_at": cached_at,
+            "check_hash": _make_check_hash(machine_id, result, cached_at),
         }
         with open(_LICENSE_CACHE, "w", encoding="utf-8") as f:
             json.dump(cache, f)
@@ -237,7 +254,7 @@ def load_cache(machine_id: str) -> Optional[dict]:
             cache = json.load(f)
         if cache.get("machine_id") != machine_id:
             return None
-        expected_hash = _make_check_hash(machine_id, cache)
+        expected_hash = _make_check_hash(machine_id, cache, cache.get("cached_at", ""))
         if cache.get("check_hash") != expected_hash:
             return None
         return cache
@@ -245,19 +262,19 @@ def load_cache(machine_id: str) -> Optional[dict]:
         return None
 
 
-def _make_check_hash(machine_id: str, data: dict) -> str:
-    """缓存校验哈希"""
-    raw = f"{machine_id}|{data.get('valid','')}|{data.get('expires','')}|SMS_BOT_V6_SALT"
+def _make_check_hash(machine_id: str, data: dict, cached_at: str = "") -> str:
+    """缓存校验哈希（含 cached_at 防篡改）"""
+    raw = f"{machine_id}|{data.get('valid','')}|{data.get('expires','')}|{cached_at}|SMS_BOT_V6_SALT"
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
 def is_expired(expires_str: str) -> bool:
-    """检查是否过期"""
+    """检查是否过期（使用 UTC 时间比较）"""
     if not expires_str or expires_str == "permanent":
         return False
     try:
-        exp = datetime.strptime(expires_str, "%Y-%m-%d")
-        return datetime.now() > exp
+        exp = datetime.strptime(expires_str, "%Y-%m-%d").replace(tzinfo=CST)
+        return _now() > exp
     except Exception:
         return False
 
@@ -270,12 +287,14 @@ class LicenseManager:
         self._machine_id = None
         self._valid = False
         self._expires = ""
-        self._last_check = 0
+        self._last_check = time.time()  # 初始化为当前时间，避免首次 light_check 立即重验证
         self.last_verify_result: Optional[dict] = None
         self._admin_contact: str = ""
+        self._announcement: str = ""
         self._heartbeat_interval = 300
         self._heartbeat_thread = None
         self._stop_heartbeat = threading.Event()
+        self._lock = threading.Lock()
 
     @property
     def machine_id(self) -> str:
@@ -285,15 +304,21 @@ class LicenseManager:
 
     @property
     def is_valid(self) -> bool:
-        return self._valid
+        with self._lock:
+            return self._valid
 
     @property
     def expires(self) -> str:
-        return self._expires
+        with self._lock:
+            return self._expires
 
     @property
     def admin_contact(self) -> str:
         return self._admin_contact
+
+    @property
+    def announcement(self) -> str:
+        return self._announcement
 
     @property
     def admin_link(self) -> str:
@@ -325,11 +350,14 @@ class LicenseManager:
 
         if result.get("admin_contact"):
             self._admin_contact = result["admin_contact"]
+        if result.get("announcement"):
+            self._announcement = result["announcement"]
 
         if result.get("valid"):
-            self._valid = True
-            self._expires = result.get("expires", "")
-            self._last_check = time.time()
+            with self._lock:
+                self._valid = True
+                self._expires = result.get("expires", "")
+                self._last_check = time.time()
             self.last_verify_result = result
             self._heartbeat_interval = result.get("heartbeat_interval", 300)
             save_cache(mid, result)
@@ -351,18 +379,27 @@ class LicenseManager:
             if cache and cache.get("valid"):
                 try:
                     cached_time = datetime.fromisoformat(cache["cached_at"])
-                    age_hours = (datetime.now() - cached_time).total_seconds() / 3600
+                    if cached_time.tzinfo is None:
+                        cached_time = cached_time.replace(tzinfo=CST)
+                    age_hours = (_now() - cached_time).total_seconds() / 3600
                     if age_hours <= 24 and not is_expired(cache.get("expires", "")):
-                        self._valid = True
-                        self._expires = cache.get("expires", "")
-                        self._last_check = time.time()
+                        with self._lock:
+                            self._valid = True
+                            self._expires = cache.get("expires", "")
+                            self._last_check = time.time()
+                        self.last_verify_result = {
+                            "valid": True,
+                            "expires": cache.get("expires", ""),
+                            "msg": "离线缓存验证",
+                        }
                         log.info(f"离线缓存验证通过（缓存 {age_hours:.1f} 小时前）")
                         self._start_heartbeat()
                         return True, f"离线验证通过（缓存有效）\n下次联网时将重新验证"
                 except Exception:
                     pass
 
-        self._valid = False
+        with self._lock:
+            self._valid = False
         return False, result.get("msg", "授权验证失败")
 
     def activate(self, license_key: str) -> tuple[bool, str]:
@@ -373,10 +410,13 @@ class LicenseManager:
 
         result = activate_key(mid, self._api_url, license_key)
         if result.get("valid"):
-            self._valid = True
-            self._expires = result.get("expires", "")
-            self._last_check = time.time()
+            with self._lock:
+                self._valid = True
+                self._expires = result.get("expires", "")
+                self._last_check = time.time()
             self.last_verify_result = result
+            if result.get("admin_contact"):
+                self._admin_contact = result["admin_contact"]
             save_cache(mid, result)
             self._start_heartbeat()
             return True, result.get("msg", "激活成功")
@@ -388,28 +428,34 @@ class LicenseManager:
         不联网，只检查内存状态 + 过期时间
         每 6 小时强制重新联网验证
         """
-        if not self._valid:
-            return False
+        with self._lock:
+            if not self._valid:
+                return False
+            expires = self._expires
+            last_check = self._last_check
 
-        if self._expires and self._expires != "permanent":
-            if is_expired(self._expires):
-                self._valid = False
+        if expires and expires != "permanent":
+            if is_expired(expires):
+                with self._lock:
+                    self._valid = False
                 log.warning("授权已过期")
                 return False
 
         # 每 6 小时重新联网验证
-        if time.time() - self._last_check > 6 * 3600:
+        if time.time() - last_check > 6 * 3600:
             log.info("距上次验证超过 6 小时，重新验证")
             result = verify_online(self.machine_id, self._api_url)
             if result.get("valid"):
-                self._valid = True
-                self._expires = result.get("expires", "")
-                self._last_check = time.time()
+                with self._lock:
+                    self._valid = True
+                    self._expires = result.get("expires", "")
+                    self._last_check = time.time()
                 save_cache(self.machine_id, result)
             else:
                 log.warning(f"定期重新验证失败: {result.get('msg')}")
-                if time.time() - self._last_check > 12 * 3600:
-                    self._valid = False
+                if time.time() - last_check > 12 * 3600:
+                    with self._lock:
+                        self._valid = False
                     log.warning("连续 12 小时验证失败，授权已暂停")
                     return False
 
@@ -429,12 +475,13 @@ class LicenseManager:
                     break
                 result = send_heartbeat(self.machine_id, self._api_url)
                 if result.get("status") == "ok":
-                    remaining = result.get("remaining_seconds", 0)
+                    remaining = max(0, result.get("remaining_seconds", 0))
                     if remaining > 0:
                         self._heartbeat_interval = result.get("heartbeat_interval", 300)
                     log.debug(f"心跳成功，剩余 {remaining}s")
-                elif result.get("status") in ("expired", "banned"):
-                    self._valid = False
+                elif result.get("status") in ("expired", "banned", "disabled"):
+                    with self._lock:
+                        self._valid = False
                     log.warning(f"心跳返回: {result.get('status')}")
                     break
 
@@ -445,3 +492,5 @@ class LicenseManager:
     def stop_heartbeat(self):
         """停止心跳"""
         self._stop_heartbeat.set()
+        if self._heartbeat_thread:
+            self._heartbeat_thread.join(timeout=5)

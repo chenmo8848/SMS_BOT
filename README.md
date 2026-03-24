@@ -1,344 +1,102 @@
 <div align="center">
 
-# 🐟 SMS Bot v6
+<img src="docs/banner.svg" alt="SMS Bot Dynamic Banner" width="100%" style="max-width: 800px; margin-bottom: 24px;" />
 
-<img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" />
-<img src="https://img.shields.io/badge/Telegram-Bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" />
-<img src="https://img.shields.io/badge/Windows-10%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white" />
-<img src="https://img.shields.io/badge/Phone%20Link-Integrated-green?style=for-the-badge" />
-<img src="https://img.shields.io/badge/License-Authorized-red?style=for-the-badge" />
+# SMS Bot v6
 
-<br/><br/>
+**下一代智能 Phone Link 自动化分发引擎** <br />
+专为 Windows 环境架构，基于多引擎切换与状态级监控。
 
-**捕鱼达人 v6** — 基于 Telegram + Phone Link 的智能 SMS 自动化系统
+<br />
 
-<br/>
-
-```
- ┌──────────────────────────────────────────────────────────┐
- │                                                          │
- │   🎣  "老板请上船"                                        │
- │                                                          │
- │   Telegram Bot  →  Windows Phone Link  →  SMS 发送       │
- │                                                          │
- │   批量导入 · 模板渲染 · 自动发送 · 落地测试 · 全程监控    │
- │                                                          │
- └──────────────────────────────────────────────────────────┘
-```
-
-> 📸 *在此处可放置 Bot 接收任务并控制 Windows 发送短信的流程动图 (GIF)，展示极客体验*
+[**🚀 快速启动**](#-快速启动) · [**🏗 架构模型**](#-系统架构) · [**⌨️ 终端交互**](#-终端交互)
 
 </div>
 
 ---
 
-## ✨ 核心功能
+## ⚡ 核心定位
 
-<table>
-<tr>
-<td width="50%">
+SMS Bot v6 彻底抛弃了脆弱的传统按键精灵模式。它是一个深度集成了 Telegram 远程调度与 Windows 本地通信链路的自动化基座。通过引入 **UIA (UI Automation)** 与 **SendKeys 兜底** 双引擎动态切换，实现了针对 Microsoft Phone Link 的像素级操控与极高的投递成功率。
 
-### 📱 智能发送
-- **双引擎切换** — UIA 自动化 + SendKeys 兜底
-- **Auto 模式** — 自动选择最优引擎并缓存
-- **DB 确认** — 读取 phone.db 验证发送成功
-- **随机间隔** — 可配置发送间隔（5~90秒）
-- **优先级队列** — 测试/回复 SMS 自动抢占
+## ✨ 技术特性
 
-</td>
-<td width="50%">
+- **双引擎自适应调度** — 核心分发系统支持 `auto` 智能模式。当环境 UI 层发生变动或卡顿致使 UIA 无法追踪句柄时，平滑降级至 SendKeys 模拟引擎。
+- **三层状态穿透监控** — 独立守护进程实施「进程心跳」「数据库同步律」「窗口假死」三维侦测。一旦 Phone Link 冻结，即刻触发自愈重启机制。
+- **优先队列分片** — 发送列队完全接管并发管理。关键测试或加急落地包具备自动抢占最高优先级的特权，保证实时触达。
+- **DB 状态硬确认** — 不是无脑执行点击。系统会实时穿透读取本地 `phone.db`，在底层 SQLite 确认状态后才抛出成功回调。
 
-### 📊 任务管理
-- **多组任务** — 支持多组队列排队执行
-- **断点续传** — 异常重启自动恢复进度
-- **暂停/继续** — 随时控制发送节奏
-- **实时进度** — 进度条 + ETA + 成功率
-- **结果导出** — 完成后自动生成报告文件
+## 🚀 快速启动
 
-</td>
-</tr>
-<tr>
-<td>
-
-### 🔍 三层监控
-- **进程监控** — Phone Link 运行状态检测
-- **连接监控** — phone.db 更新频率分析
-- **窗口监控** — 检测 App 假死冻结
-- **自动恢复** — 异常时自动重启 Phone Link
-- **状态通知** — 离线/恢复实时推送
-
-</td>
-<td>
-
-### 📡 落地测试
-- **定时测试** — 周期性发送测试短信
-- **通道验证** — 确认 SMS 实际到达
-- **优先抢占** — 测试期间自动暂停批量任务
-- **灵活配置** — 自定义号码/内容/间隔
-
-</td>
-</tr>
-</table>
-
----
-
-## 🏗️ 系统架构
-
-```
-  ┌─────────────┐         ┌──────────────────┐
-  │  Telegram    │◄───────►│   SMS Bot v6     │
-  │  用户/群组    │  API    │   (Python)       │
-  └─────────────┘         └───────┬──────────┘
-                                  │
-              ┌───────────────────┼───────────────────┐
-              │                   │                   │
-    ┌─────────▼────────┐ ┌───────▼────────┐ ┌────────▼───────┐
-    │  SmsSender        │ │ MonitorService │ │ LandTestService│
-    │  UIA / SendKeys   │ │ 三层状态检测    │ │ 定时测试发送    │
-    └────────┬─────────┘ └───────┬────────┘ └────────────────┘
-             │                   │
-    ┌────────▼─────────┐ ┌──────▼─────────┐
-    │  Phone Link       │ │  phone.db      │
-    │  (Windows App)    │ │  (SQLite)      │
-    └────────┬─────────┘ └────────────────┘
-             │
-    ┌────────▼─────────┐
-    │  手机 (蓝牙/WiFi) │
-    │  实际发送 SMS      │
-    └──────────────────┘
-
-                    ┌──────────────────┐
-                    │  Auth Server     │
-                    │  授权验证 + 心跳   │
-                    └──────────────────┘
-```
-
----
-
-## 🚀 快速开始
-
-### 环境要求
-
-| 项目 | 要求 |
-|------|------|
-| 系统 | Windows 10 / 11 |
-| Python | 3.10+ |
-| 应用 | Microsoft Phone Link（已连接手机） |
-| 网络 | 可访问 Telegram API |
-
-### 安装
+本系统要求宿主机具备 **Windows 10/11** 并在本地预装并正常配对连接 Microsoft Phone Link。
 
 ```powershell
-# 1. 克隆项目
 git clone https://github.com/x72dev/SMS_BOT.git
 cd SMS_BOT
 
-# 2. 运行安装向导
+# 执行自动化环境装载与依赖解析
 python -m bot.setup
 
-# 3. 启动 Bot
-smsbot.bat
-# 或
-python -m bot
+# 拉起应用
+.\smsbot.bat
 ```
-
-### 安装向导会引导你配置
-
-- Telegram Bot Token（从 @BotFather 获取）
-- 管理员用户 ID
-- 发送间隔 / 引擎选择
-- 落地测试配置
-
----
-
-## 🎮 使用方式
-
-### Telegram 命令
-
-| 命令 | 说明 | 快捷操作 |
-|------|------|---------|
-| `/start` | 打开主菜单 | 按钮式操作面板 |
-| `/send 号码 内容` | 单条发送 | 快速测试 |
-| `/batch` | 批量导入 | 发送文本/文件 |
-| `/template` | 模板管理 | 查看/编辑/预览 |
-| `/status` | 发送进度 | 实时统计 |
-| `/pause` / `/resume` | 暂停/继续 | 控制节奏 |
-| `/stop` | 停止任务 | 紧急刹车 |
-| `/settings` | 系统设置 | 在线调参 |
-| `/activate` | 授权管理面板 | 查看状态/验证/激活 |
-| `/activate 卡密` | 卡密激活 | 直接激活 |
-| `/machine_id` | 查看机器码 | 用于购买授权 |
-| 🔑 授权管理 | 主菜单按钮 | 完整授权管理面板 |
-
-### 批量导入格式
-
-**文本模式** — 直接发送：
-```
-13800138001 你好，这是测试消息
-13900139002 另一条消息内容
-```
-
-**Excel 模式** — 上传 `.xlsx` 文件，配合模板自动渲染
-
-**模板变量示例：**
-```
-{姓名}您好，您的{放款金额}元已于{放款日期}发放到尾号{银行卡号[-4:]}的账户。
-```
-
----
-
-## 🔐 授权系统
-
-对接 [SMSBOT Auth Server](https://github.com/x72dev/SMSBOT-Auth-Server) 服务端。
-
-### 工作流程
-
-```
-首次启动 ──► 自动注册 ──► 24h 试用
-                              │
-              购买卡密 ◄──── 试用到期
-                │
-     🔑 授权管理面板 ──► 输入卡密 ──► 正式授权 ──► 心跳保活
-                                                     │
-                                       到期提醒 ◄── 定期检查
-```
-
-### 授权管理入口
-
-主菜单底部「🔑 授权管理」按钮，进入后可查看：
-
-- 机器码（一键复制）
-- 当前授权状态（试用/正式/到期/未激活）
-- 到期日期 & 剩余天数
-- 管理员联系方式
-- 系统公告
-
-支持操作：
-- **🔄 重新验证** — 立即联网检查授权状态
-- **🔑 输入卡密** — 在线激活/续期
-
-### 授权特性
-
-- **即开即用** — 新设备自动获得 24 小时免费试用
-- **卡密激活** — 菜单按钮或 `/activate SMS-XXXX-XXXX-XXXX-XXXX`
-- **设备绑定** — 基于 CPU + 硬盘 + Windows 产品 ID 的唯一机器码
-- **心跳保活** — 后台线程自动上报在线状态（线程安全）
-- **离线容错** — 网络中断时使用本地缓存（24h 有效，防篡改校验）
-- **到期提醒** — 7天、3天、1天自动 Telegram 通知
-- **统一时区** — 客户端/服务端统一 Asia/Shanghai (CST)
-- **锁定引导** — 未激活时所有功能锁定，显示授权入口按钮
-
----
-
-## 📁 项目结构
-
-```
-SMS_BOT/
-├── bot/
-│   ├── __main__.py              # 启动入口
-│   ├── config.py                # 配置管理 (Pydantic)
-│   ├── state.py                 # 全局状态机
-│   ├── setup.py                 # 安装向导
-│   ├── handlers/                # Telegram 命令处理
-│   │   ├── register.py          #   处理器注册中心
-│   │   ├── common.py            #   权限装饰器 + 工具
-│   │   ├── menu.py              #   /start 主菜单
-│   │   ├── send.py              #   /send /batch 发送
-│   │   ├── task.py              #   任务调度 + 进度
-│   │   ├── monitor.py           #   /monitor 监控
-│   │   ├── settings.py          #   /settings 设置
-│   │   ├── template.py          #   /template 模板
-│   │   ├── data.py              #   Excel 数据处理
-│   │   ├── license.py           #   /activate 授权
-│   │   ├── landtest.py          #   落地测试
-│   │   └── log_view.py          #   日志查看
-│   ├── services/                # 核心服务
-│   │   ├── sms_sender.py        #   SMS 发送引擎
-│   │   ├── phone_db.py          #   Phone Link 数据库
-│   │   ├── phone_link.py        #   进程管理
-│   │   ├── monitor_svc.py       #   三层监控服务
-│   │   ├── task_manager.py      #   任务持久化
-│   │   ├── land_test_svc.py     #   落地测试服务
-│   │   ├── license.py           #   授权验证 + 心跳
-│   │   ├── notifier.py          #   Telegram 通知
-│   │   └── excel_parser.py      #   Excel 解析
-│   ├── models/                  # 数据模型
-│   │   ├── sms.py               #   SMS / SIM 模型
-│   │   └── task.py              #   任务 / 分组模型
-│   └── utils/                   # 工具函数
-│       ├── formatting.py        #   格式化 / 号码处理
-│       ├── keyboard.py          #   按钮构建器
-│       └── log_reader.py        #   日志读取
-├── scripts/                     # PowerShell 脚本
-│   ├── send_sms.ps1             #   SMS 发送脚本
-│   ├── check_status.ps1         #   状态检查
-│   ├── restart_phonelink.ps1    #   Phone Link 重启
-│   └── manager.ps1              #   进程管理
-├── config.json                  # 运行配置
-├── smsbot.bat                   # 一键启动
-└── 使用教程.txt                  # 使用说明
-```
-
----
-
-
-## 🛠️ 环境避坑指南 (Troubleshooting)
-
-<details>
-<summary><b>1. Phone Link 经常假死或掉线？</b></summary>
-- **保持屏幕常亮**：Windows 息屏可能导致应用休眠。请在电源设置中关闭“屏幕关闭”和“系统睡眠”。<br>
-- **取消后台限制**：在 Windows 设置 -> 应用 -> 安装的应用中，找到 Phone Link，将其后台权限设置为“始终允许”。
-</details>
-
-<details>
-<summary><b>2. 输入内容错乱或变成拼音？</b></summary>
-当使用 <code>SendKeys</code> 兜底引擎时，可能会与中文输入法冲突。<b>强烈建议在运行发信任务时，将系统输入法切换为默认的英文（ENG）状态</b>。
-</details>
-
-<details>
-<summary><b>3. UIA 引擎无法定位元素？</b></summary>
-请确保 Windows 和 Phone Link 已更新到较新版本，并且 UI 语言为简体中文或英文。应用界面布局变更可能导致 UIA 定位失效，此时系统会自动回退到 <code>SendKeys</code> 引擎。
-</details>
-
----
-
-## ⚙️ 配置说明
-
-
-`config.json` 核心配置项：
-
-```jsonc
-{
-    "bot_token": "...",           // Telegram Bot Token
-    "allowed_user_ids": [123],    // 授权用户 ID
-    "notify_user_id": 123,        // 通知接收用户
-    "interval_min": 60,           // 最小发送间隔（秒）
-    "interval_max": 90,           // 最大发送间隔（秒）
-    "send_engine": "auto",        // 发送引擎: auto/uia/sendkeys
-    "mon_status_sec": 30,         // 状态监控频率
-    "mon_sms_sec": 10,            // SMS 监控频率
-    "test_enabled": false,        // 落地测试开关
-    "test_phone": "",             // 测试号码
-    "test_interval_min": 30       // 测试间隔（分钟）
-}
-```
-
----
-
-
-## ⚠️ 免责声明
 
 > [!WARNING]
-> 本项目（捕鱼达人 v6）仅供**个人学习、技术研究及企业内部合规的通知测试**使用。
-> 1. **严禁用于非法用途**：使用者严禁将本工具用于发送垃圾短信、营销轰炸、诈骗信息等任何违反所在地法律法规的行为。
-> 2. **责任自负**：开发者不对因使用本工具导致的任何直接或间接损失、账号封禁、法律纠纷承担责任。
-> 3. **合规承诺**：使用即表示您同意本免责声明，并承诺严格遵守相关法律法规。
+> **免责声明**
+> 本项目仅供个人学习、技术研究及企业内部合规的通知测试使用。严禁用于非法营销轰炸、违规外呼等任何违反所在地法律法规的行为。使用者后果自负。
 
----
+<details>
+<summary><b>环境避坑指南 (Troubleshooting)</b></summary>
 
-<div align="center">
-**SMS Bot v6** · 捕鱼达人 🐟
+<br/>
 
-*Telegram · Phone Link · Windows*
+**1. Phone Link 频繁假死或掉线？**
+- **保持屏幕常亮**：Windows 息屏可能导致应用休眠。请在电源设置中关闭“屏幕关闭”和“系统睡眠”。
+- **取消后台限制**：将 Phone Link 的后台权限设置为“始终允许”。
 
-</div>
+**2. 引擎输入错乱？**
+当自适应降级至 `SendKeys` 引擎时，**强烈建议将 Windows 系统输入法锁定在英文 (ENG) 状态**，避免输入法层面的编码拦截。
+</details>
+
+## 🏗 系统架构
+
+```mermaid
+graph TD
+  classDef default fill:#fafafa,stroke:#e5e5e5,stroke-width:1px,color:#111
+  classDef dark fill:#111,stroke:#333,stroke-width:1px,color:#fff
+  
+  Telegram[Telegram Network] --> Engine
+  
+  subgraph Windows Environment [SMS Bot Lifecycle]
+    direction TB
+    Engine(Bot Manager):::dark
+    
+    Disp{动态分发控制器}
+    
+    UIA[UIA 原生引擎]
+    Keys[SendKeys 兜底]
+    Monitor[三维状态守卫]
+    
+    Engine -->|下发任务| Disp
+    Disp --> UIA
+    Disp --> Keys
+    
+    Monitor -.->|保活监控| PL
+    UIA -->|句柄调用| PL
+    Keys -->|底表写入| PL
+  end
+
+  PL[Phone Link App]:::dark -.-> Phone[Physical Device]
+```
+
+## ⌨️ 终端交互
+
+通过 Telegram 远端进行全生命周期调度，所有操作在对话框内无缝完成。
+
+| 指令 | 描述 |
+| :--- | :--- |
+| `/batch` | 上传 Excel / 纯文本，解析并发起大批量投递流 |
+| `/template` | 基于 `{字段}` 的多维度动态话术模板渲染 |
+| `/status` | 返回实时渲染的投递 ETA、分片进度与状态量化面板 |
+| `/settings` | 动态干预执行环境，包括频率散列配置与兜底引擎切换 |
+| `/activate` | 直接吊起授权管理链路，验证设备硬件指纹 |

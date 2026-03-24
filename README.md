@@ -2,8 +2,6 @@
 
 <img src="docs/banner.svg" alt="SMS Bot Banner" width="100%" style="max-width: 800px; margin-bottom: 20px;" />
 
-# 🐟 SMS Bot v6 (捕鱼达人)
-
 **下一代智能 Phone Link 自动化短信分发与中枢调度引擎**
 
 [![Windows](https://img.shields.io/badge/Windows-10%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://microsoft.com)

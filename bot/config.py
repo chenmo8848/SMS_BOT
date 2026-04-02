@@ -63,9 +63,6 @@ class BotConfig(BaseModel):
     test_interval_min: int = Field(default=30, ge=1)
     test_content: str = "落地测试"
 
-    # ── 授权（保留字段兼容旧配置，实际地址已内置）──
-    license_api_url: str = Field(default="", description="已弃用")
-
     @field_validator("bot_token")
     @classmethod
     def check_token(cls, v):

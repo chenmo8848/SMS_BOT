@@ -93,7 +93,7 @@ cd SMS_BOT
 
 2. **环境自动装载与向导**：
 ```powershell
-# 将自动拉取依赖库并开启交互式配置引导（Bot Token、授权设定等）
+# 将自动拉取依赖库并开启交互式配置引导（Bot Token、运行参数等）
 python -m bot.setup
 ```
 

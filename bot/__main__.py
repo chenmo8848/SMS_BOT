@@ -138,33 +138,30 @@ def main():
 
         # ── 授权验证（联网）──
         lic_status_line = ""
-        if license_mgr._api_url:
-            log.info("正在验证授权...")
-            lic_ok, lic_msg = license_mgr.full_verify()
-            if not lic_ok:
-                log.warning(f"授权验证失败: {lic_msg}")
-                from bot.handlers.license import show_license_blocked
-                await show_license_blocked(bot, cfg, license_mgr)
-                state.license_blocked = True
-                log.info("授权未通过，功能已锁定")
-                return  # 不执行后续启动流程
-            else:
-                log.info(f"授权验证通过: {lic_msg}")
-                # 构建授权状态行
-                vr = license_mgr.last_verify_result or {}
-                if vr.get("trial"):
-                    hours = vr.get("trial_hours_left", 24)
-                    lic_status_line = f"\n🔵 试用中（剩余 {hours} 小时）"
-                elif license_mgr.expires == "permanent":
-                    lic_status_line = "\n🟢 永久授权"
-                elif license_mgr.expires:
-                    days = vr.get("days_left", 0)
-                    if days <= 7:
-                        lic_status_line = f"\n⚠️ 授权即将到期（剩 {days} 天，{license_mgr.expires}）"
-                    else:
-                        lic_status_line = f"\n🟢 授权至 {license_mgr.expires}（剩 {days} 天）"
+        log.info("正在验证授权...")
+        lic_ok, lic_msg = license_mgr.full_verify()
+        if not lic_ok:
+            log.warning(f"授权验证失败: {lic_msg}")
+            from bot.handlers.license import show_license_blocked
+            await show_license_blocked(bot, cfg, license_mgr)
+            state.license_blocked = True
+            log.info("授权未通过，功能已锁定")
+            return  # 不执行后续启动流程
         else:
-            log.info("未配置授权服务器，跳过验证")
+            log.info(f"授权验证通过: {lic_msg}")
+            # 构建授权状态行
+            vr = license_mgr.last_verify_result or {}
+            if vr.get("trial"):
+                hours = vr.get("trial_hours_left", 24)
+                lic_status_line = f"\n🔵 试用中（剩余 {hours} 小时）"
+            elif license_mgr.expires == "permanent":
+                lic_status_line = "\n🟢 永久授权"
+            elif license_mgr.expires:
+                days = vr.get("days_left", 0)
+                if days <= 7:
+                    lic_status_line = f"\n⚠️ 授权即将到期（剩 {days} 天，{license_mgr.expires}）"
+                else:
+                    lic_status_line = f"\n🟢 授权至 {license_mgr.expires}（剩 {days} 天）"
 
         # 启动通知
         quote = fishing_quote()
@@ -177,8 +174,7 @@ def main():
         )
 
         # ── 启动到期提醒定时任务 ──
-        if license_mgr._api_url:
-            asyncio.create_task(_expiry_reminder_loop(bot, cfg, license_mgr, notifier, state))
+        asyncio.create_task(_expiry_reminder_loop(bot, cfg, license_mgr, notifier, state))
 
         # 自动启动监控
         log.info("自动启动监控")
@@ -222,7 +218,6 @@ def main():
     async def _expiry_reminder_loop(bot, cfg, license_mgr, notifier, state):
         """定期检查授权到期，提前提醒"""
         import asyncio as _aio
-        from bot.services.license import verify_online
         # 首次等 1 小时再检查
         await _aio.sleep(3600)
         while True:
@@ -230,13 +225,10 @@ def main():
                 if state.license_blocked:
                     await _aio.sleep(3600)
                     continue
-                result = verify_online(license_mgr.machine_id, license_mgr._api_url)
-                # 更新管理员联系方式
-                if result.get("admin_contact"):
-                    license_mgr._admin_contact = result["admin_contact"]
+                ok, result = license_mgr.refresh_status(respect_offline_grace=True)
                 admin = license_mgr.admin_link
 
-                if not result.get("valid"):
+                if not ok:
                     state.license_blocked = True
                     msg = result.get("msg", "授权已失效")
                     await notifier.send(
@@ -246,6 +238,11 @@ def main():
                     )
                     log.warning(f"授权失效: {msg}")
                     break
+
+                if not result.get("valid"):
+                    log.debug(f"到期检查跳过，当前处于离线宽限期: {result.get('msg', '')}")
+                    await _aio.sleep(3600)
+                    continue
 
                 # 试用到期提醒
                 if result.get("trial"):

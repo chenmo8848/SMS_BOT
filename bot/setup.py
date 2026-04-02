@@ -226,7 +226,6 @@ def config_wizard():
                   ("user_import_cols",["放款金额","姓名","身份证","手机号码","银行卡号","放款日期"]),
                   ("user_date_fmt","%Y-%m-%d"),("test_enabled",False),("test_phone",""),
                   ("test_interval_min",30),("test_content","落地测试"),("notify_group_id",None),
-                  ("license_api_url","https://smsbot-license.3949897.workers.dev"),
                   ]:
         result.setdefault(k, v)
     return result
